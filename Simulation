@@ -1,0 +1,188 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D 
+
+# CONSTANTS
+
+R_E = 6371.0 
+h_iss = 420.0
+R_I = R_E + h_iss 
+
+i_deg = 51.6
+i = np.deg2rad(i_deg) 
+
+phi0_deg = 28.083  
+lambda0_deg = -80.608
+phi0 = np.deg2rad(phi0_deg)
+lambda0 = np.deg2rad(lambda0_deg)
+
+Omega_E = 2.0 * np.pi / 86164.0
+
+T_orbit = 92.0 * 60.0 
+n = 2.0 * np.pi / T_orbit  
+
+#
+# TIMING
+
+num_orbits = 24  
+dt = 120.0  
+
+T_total = num_orbits * T_orbit
+t_array = np.arange(0.0, T_total, dt)  # seconds
+
+u0 = 0.0
+theta0 = 0.0
+
+u = u0 + n * t_array
+theta = theta0 + Omega_E * t_array
+
+# POSITIONS
+
+def iss_position(u_val):
+    x = R_I * np.cos(u_val)
+    y = R_I * np.sin(u_val) * np.cos(i)
+    z = R_I * np.sin(u_val) * np.sin(i)
+    return np.array([x, y, z])
+
+def observer_position(theta_val):
+    lam = lambda0 + theta_val
+    x = R_E * np.cos(phi0) * np.cos(lam)
+    y = R_E * np.cos(phi0) * np.sin(lam)
+    z = R_E * np.sin(phi0)
+    return np.array([x, y, z])
+
+r_s_all = np.array([iss_position(ui) for ui in u])
+r_o_all = np.array([observer_position(th) for th in theta])
+
+# COORDINATES
+
+rho_local_all = np.zeros_like(r_s_all) 
+
+for k in range(len(t_array)):
+    rs = r_s_all[k]
+    ro = r_o_all[k]
+    rho_vec = rs - ro
+
+    lam = lambda0 + theta[k]
+
+    Uhat = ro / np.linalg.norm(ro)
+
+    Nhat = np.array([
+        -np.sin(phi0) * np.cos(lam),
+        -np.sin(phi0) * np.sin(lam),
+         np.cos(phi0)
+    ])
+
+    Ehat = np.array([
+        -np.sin(lam),
+         np.cos(lam),
+         0.0
+    ])
+
+    rho_E = np.dot(rho_vec, Ehat)
+    rho_N = np.dot(rho_vec, Nhat)
+    rho_U = np.dot(rho_vec, Uhat)
+
+    rho_local_all[k, 0] = rho_E
+    rho_local_all[k, 1] = rho_N
+    rho_local_all[k, 2] = rho_U
+
+rho_norm = np.linalg.norm(rho_local_all, axis=1)
+max_rho = np.max(rho_norm) * 1.1
+
+# PLOTTING
+
+plt.ion()
+
+fig = plt.figure(figsize=(12, 5))
+fig.subplots_adjust(left=0.06, right=0.97, wspace=0.25)
+
+ax3d = fig.add_subplot(1, 2, 1, projection='3d')
+ax3d.set_title("Path of ISS around Ortega")
+
+u_sphere = np.linspace(0, 2*np.pi, 30)
+v_sphere = np.linspace(0, np.pi, 15)
+xs = R_E * np.outer(np.cos(u_sphere), np.sin(v_sphere))
+ys = R_E * np.outer(np.sin(u_sphere), np.sin(v_sphere))
+zs = R_E * np.outer(np.ones_like(u_sphere), np.cos(v_sphere))
+ax3d.plot_wireframe(xs, ys, zs, linewidth=0.3, alpha=0.3)
+
+ax3d.plot(r_s_all[:,0], r_s_all[:,1], r_s_all[:,2],
+          'r--', lw=1.2, alpha=0.6, label='ISS Orbit')
+ax3d.plot(r_o_all[:,0], r_o_all[:,1], r_o_all[:,2],
+          'g:', lw=1.2, alpha=0.6, label='Observer Path')
+
+iss_point, = ax3d.plot([], [], [], 'ro', ms=6, label='ISS')
+obs_point, = ax3d.plot([], [], [], 'go', ms=6, label='Ortega')
+los_line,  = ax3d.plot([], [], [], 'k--', lw=1.0, alpha=0.8)
+
+max_radius = R_I * 1.1
+ax3d.set_xlim(-max_radius, max_radius)
+ax3d.set_ylim(-max_radius, max_radius)
+ax3d.set_zlim(-max_radius, max_radius)
+ax3d.set_box_aspect([1, 1, 1])
+
+ax3d.set_xlabel("X (km)")
+ax3d.set_ylabel("Y (km)")
+ax3d.set_zlabel("Z (km)")
+ax3d.legend(loc='upper left', fontsize=8)
+
+ax_local = fig.add_subplot(1, 2, 2, projection='3d')
+ax_local.set_title("Local Sky Frame")
+
+ax_local.set_xlabel("East (km)")
+ax_local.set_ylabel("North (km)")
+ax_local.set_zlabel("Zenith (km)")
+
+ortega_point, = ax_local.plot([0], [0], [0], 'go', ms=6, label='Ortega')
+
+iss_track_line, = ax_local.plot([], [], [], 'm--', lw=0.4, alpha=0.6, label='ISS Path')
+iss_local_point, = ax_local.plot([], [], [], 'ro', ms=6, label='ISS')
+los_local_line,  = ax_local.plot([], [], [], 'k--',  lw=1.0, alpha=0.8)
+
+scale_factor = 1.5 
+
+ax_local.set_xlim(-7500,7500)
+ax_local.set_ylim(-7500,7500)
+ax_local.set_zlim(-10000, 5000)
+
+ax_local.set_box_aspect([1, 1, 1])
+ax_local.legend(loc='upper left', fontsize=8)
+
+ax_local.view_init(elev=25, azim=-60)
+
+plt.show(block=False)
+
+# ANIMATION LOOP
+
+for k in range(len(t_array)):
+    rs = r_s_all[k]
+    ro = r_o_all[k]
+
+    iss_point.set_data([rs[0]], [rs[1]])
+    iss_point.set_3d_properties([rs[2]])
+
+    obs_point.set_data([ro[0]], [ro[1]])
+    obs_point.set_3d_properties([ro[2]])
+
+    los_line.set_data([ro[0], rs[0]], [ro[1], rs[1]])
+    los_line.set_3d_properties([ro[2], rs[2]])
+
+    rho_E = rho_local_all[k, 0]
+    rho_N = rho_local_all[k, 1]
+    rho_U = rho_local_all[k, 2]
+
+    iss_local_point.set_data([rho_E], [rho_N])
+    iss_local_point.set_3d_properties([rho_U])
+
+    los_local_line.set_data([0, rho_E], [0, rho_N])
+    los_local_line.set_3d_properties([0, rho_U])
+
+    iss_track_line.set_data(rho_local_all[:k+1, 0],
+                            rho_local_all[:k+1, 1])
+    iss_track_line.set_3d_properties(rho_local_all[:k+1, 2])
+
+    plt.pause(0.01)
+
+plt.ioff()
+plt.show()
